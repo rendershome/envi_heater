@@ -312,13 +312,26 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                     schedule_id = schedule_info.get("schedule_id") or schedule_info.get("id")
                 
                 # Build schedule data
+                enabled = schedule_info.get("enabled", False) if isinstance(schedule_info, dict) else False
+                times = schedule_info.get("times", []) if isinstance(schedule_info, dict) else []
+                
+                # Normalize enabled field
+                if isinstance(enabled, str):
+                    enabled = enabled.lower() in ("true", "1", "yes", "on")
+                elif isinstance(enabled, int):
+                    enabled = bool(enabled)
+                
+                # Ensure times is a list
+                if not isinstance(times, list):
+                    times = []
+                
                 self._schedule_data = {
                     "device_id": self._device_id,
                     "schedule_id": schedule_id,
-                    "enabled": schedule_info.get("enabled", False) if isinstance(schedule_info, dict) else False,
+                    "enabled": enabled,
                     "name": schedule_info.get("name") or schedule_info.get("title") if isinstance(schedule_info, dict) else None,
                     "temperature": schedule_info.get("temperature") if isinstance(schedule_info, dict) else None,
-                    "times": schedule_info.get("times", []) if isinstance(schedule_info, dict) else [],
+                    "times": times,
                 }
                 
                 # Try to get full schedule details if schedule_id exists
@@ -327,12 +340,26 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                         schedule_list = await client.get_schedule_list()
                         for schedule in schedule_list:
                             if isinstance(schedule, dict) and schedule.get("id") == schedule_id:
+                                # Normalize enabled from schedule list
+                                schedule_enabled = schedule.get("enabled", self._schedule_data["enabled"])
+                                if isinstance(schedule_enabled, str):
+                                    schedule_enabled = schedule_enabled.lower() in ("true", "1", "yes", "on")
+                                elif isinstance(schedule_enabled, int):
+                                    schedule_enabled = bool(schedule_enabled)
+                                
+                                # Get times from schedule list
+                                schedule_times = schedule.get("times", self._schedule_data["times"])
+                                if not isinstance(schedule_times, list):
+                                    schedule_times = self._schedule_data["times"]
+                                
                                 self._schedule_data.update({
-                                    "enabled": schedule.get("enabled", self._schedule_data["enabled"]),
+                                    "enabled": schedule_enabled,
                                     "name": schedule.get("name") or self._schedule_data["name"],
                                     "temperature": schedule.get("temperature") or self._schedule_data["temperature"],
-                                    "times": schedule.get("times", self._schedule_data["times"]),
+                                    "times": schedule_times,
                                 })
+                                _LOGGER.debug("Updated schedule data from list: enabled=%s, times_count=%s", 
+                                             schedule_enabled, len(schedule_times))
                                 break
                     except Exception as e:
                         _LOGGER.debug("Could not fetch full schedule details: %s", e)
@@ -435,6 +462,13 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         current_schedule = self._schedule_data or {}
         current_times = current_schedule.get("times", [])
         
+        # Normalize enabled field for form default
+        enabled_value = current_schedule.get("enabled", False)
+        if isinstance(enabled_value, str):
+            enabled_value = enabled_value.lower() in ("true", "1", "yes", "on")
+        elif isinstance(enabled_value, int):
+            enabled_value = bool(enabled_value)
+        
         # Format time entries as string for text input
         # Format: "HH:MM:SS,temp,enabled|HH:MM:SS,temp,enabled"
         time_entries_str = ""
@@ -445,15 +479,24 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                     time_str = entry.get("time", "")
                     temp = entry.get("temperature", "")
                     enabled = entry.get("enabled", True)
-                    time_parts.append(f"{time_str},{temp},{enabled}")
+                    # Normalize enabled for display
+                    if isinstance(enabled, str):
+                        enabled = enabled.lower() in ("true", "1", "yes", "on")
+                    elif isinstance(enabled, int):
+                        enabled = bool(enabled)
+                    if time_str and temp:
+                        time_parts.append(f"{time_str},{temp},{str(enabled).lower()}")
             time_entries_str = "|".join(time_parts)
+        
+        _LOGGER.debug("Form defaults: enabled=%s, name=%s, time_entries=%s", 
+                     enabled_value, current_schedule.get("name", ""), time_entries_str)
         
         return self.async_show_form(
             step_id="edit_schedule",
             data_schema=vol.Schema({
                 vol.Required(
                     "enabled",
-                    default=current_schedule.get("enabled", False),
+                    default=enabled_value,
                     description=" \n\nTurn the schedule on or off. When disabled, the schedule will not run.",
                 ): bool,
                 vol.Optional(
@@ -674,17 +717,36 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             if client:
                 try:
                     schedule = await client.get_schedule(self._schedule_id)
+                    _LOGGER.debug("Loaded schedule data: %s", schedule)
+                    
+                    # Normalize enabled field (handle 0/1, "true"/"false", boolean)
+                    enabled = schedule.get("enabled", False)
+                    if isinstance(enabled, str):
+                        enabled = enabled.lower() in ("true", "1", "yes", "on")
+                    elif isinstance(enabled, int):
+                        enabled = bool(enabled)
+                    
+                    # Get times - handle various formats
+                    times = schedule.get("times", [])
+                    if not times:
+                        times = schedule.get("time_entries", [])
+                    if not isinstance(times, list):
+                        times = []
+                    
                     self._schedule_data = {
                         "schedule_id": schedule.get("id"),
                         "device_id": schedule.get("device_id"),
-                        "enabled": schedule.get("enabled", False),
-                        "name": schedule.get("name") or "",
+                        "enabled": enabled,
+                        "name": schedule.get("name") or schedule.get("title") or "",
                         "temperature": schedule.get("temperature"),
-                        "times": schedule.get("times", []),
+                        "times": times,
                     }
                     self._device_id = str(schedule.get("device_id", ""))
+                    _LOGGER.debug("Processed schedule data: enabled=%s, name=%s, times_count=%s", 
+                                 enabled, self._schedule_data.get("name"), len(times))
                 except Exception as e:
-                    _LOGGER.error("Failed to load schedule: %s", e)
+                    _LOGGER.error("Failed to load schedule: %s", e, exc_info=True)
+                    self._schedule_data = {}
         
         # Reuse the existing edit_schedule method logic
         return await self.async_step_edit_schedule(user_input)
