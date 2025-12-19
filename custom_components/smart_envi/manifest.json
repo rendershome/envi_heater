@@ -9,5 +9,6 @@
   "config_flow": true,
   "version": "2.1.0-dev",
   "iot_class": "cloud_poll",
-  "translations": ["en"]
+  "translations": ["en"],
+  "homeassistant": "2025.12.0"
 }
