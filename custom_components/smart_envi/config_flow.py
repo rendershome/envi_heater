@@ -190,11 +190,19 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_show_form(
                 step_id="integration_options",
                 data_schema=vol.Schema({
-                    vol.Required("scan_interval", default=DEFAULT_SCAN_INTERVAL): vol.All(
+                    vol.Required(
+                        "scan_interval",
+                        default=DEFAULT_SCAN_INTERVAL,
+                        description="How often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower = more frequent updates but higher API usage. Higher = less API usage but slower response.",
+                    ): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
                     ),
-                    vol.Required("api_timeout", default=DEFAULT_API_TIMEOUT): vol.All(
+                    vol.Required(
+                        "api_timeout",
+                        default=DEFAULT_API_TIMEOUT,
+                        description="Maximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
+                    ): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_API_TIMEOUT, max=MAX_API_TIMEOUT),
                     ),
