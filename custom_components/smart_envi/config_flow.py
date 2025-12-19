@@ -167,6 +167,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Required(
                             "scan_interval",
                             default=current_scan_interval,
+                            description="How often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower = more frequent updates but higher API usage. Higher = less API usage but slower response.",
                         ): vol.All(
                             vol.Coerce(int),
                             vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
@@ -174,6 +175,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Required(
                             "api_timeout",
                             default=current_api_timeout,
+                            description="Maximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
                         ): vol.All(
                             vol.Coerce(int),
                             vol.Range(min=MIN_API_TIMEOUT, max=MAX_API_TIMEOUT),
@@ -424,14 +426,17 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     "enabled",
                     default=current_schedule.get("enabled", False),
+                    description="Turn the schedule on or off. When disabled, the schedule will not run.",
                 ): bool,
                 vol.Optional(
                     "name",
                     default=current_schedule.get("name", ""),
+                    description="Optional name for this schedule (e.g., 'Weekday Schedule', 'Weekend Schedule').",
                 ): str,
                 vol.Optional(
                     "time_entries",
                     default=time_entries_str,
+                    description="Format: HH:MM:SS,temperature,enabled. Separate multiple entries with | (pipe). Temperature: 50-86°F. Example: 08:00:00,72,true|18:00:00,68,true",
                 ): str,
             }),
             errors=errors,
